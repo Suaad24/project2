@@ -20,22 +20,24 @@ resource "aws_vpc" "main" {
   tags = merge(locals.common_tags, { Name = "${locals.project}-${locals.environment}-vpc" })
 }
 
-# --- 3. Subnets (2 Public, 2 Private) ---
+# --- 3. Subnets (Aligned with your Screenshot) ---
 resource "aws_subnet" "public" {
   count                   = 2
   vpc_id                  = aws_vpc.main.id
   cidr_block              = "10.0.${count.index + 1}.0/24"
   availability_zone       = data.aws_availability_zones.available.names[count.index]
   map_public_ip_on_launch = true
-  tags = merge(locals.common_tags, { Name = "${locals.project}-public-sn-0${count.index + 1}" })
+  # Matches your screenshot: alpha-pub-1, alpha-pub-2
+  tags = merge(locals.common_tags, { Name = "${locals.project}-pub-${count.index + 1}" })
 }
 
 resource "aws_subnet" "private" {
   count             = 2
   vpc_id            = aws_vpc.main.id
-  cidr_block        = "10.0.${count.index + 10}.0/24" # 10.0.10.0 and 10.0.11.0
+  cidr_block        = "10.0.${count.index + 10}.0/24" 
   availability_zone = data.aws_availability_zones.available.names[count.index]
-  tags = merge(locals.common_tags, { Name = "${locals.project}-private-sn-0${count.index + 1}" })
+  # Matches your screenshot: alpha-priv-1, alpha-priv-2
+  tags = merge(locals.common_tags, { Name = "${locals.project}-priv-${count.index + 1}" })
 }
 
 # --- 4. Internet Gateway ---
@@ -44,20 +46,19 @@ resource "aws_internet_gateway" "igw" {
   tags   = merge(locals.common_tags, { Name = "${locals.project}-igw" })
 }
 
-# --- 5. NAT Gateway (Required for Private Subnet Internet) ---
+# --- 5. NAT Gateway ---
 resource "aws_eip" "nat_eip" {
   domain = "vpc"
+  tags   = merge(locals.common_tags, { Name = "${locals.project}-nat-eip" })
 }
 
 resource "aws_nat_gateway" "nat" {
   allocation_id = aws_eip.nat_eip.id
-  subnet_id     = aws_subnet.public[0].id # Placed in the first public subnet
+  subnet_id     = aws_subnet.public[0].id 
   tags          = merge(locals.common_tags, { Name = "${locals.project}-nat" })
 }
 
 # --- 6. Route Tables ---
-
-# Public RT: Points to IGW
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.main.id
   route {
@@ -67,7 +68,6 @@ resource "aws_route_table" "public" {
   tags = merge(locals.common_tags, { Name = "${locals.project}-public-rt" })
 }
 
-# Private RT: Points to NAT Gateway
 resource "aws_route_table" "private" {
   vpc_id = aws_vpc.main.id
   route {
@@ -90,5 +90,4 @@ resource "aws_route_table_association" "private_assoc" {
   route_table_id = aws_route_table.private.id
 }
 
-# Data source to get AZs dynamically
 data "aws_availability_zones" "available" {}
