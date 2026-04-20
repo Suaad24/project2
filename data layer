@@ -1,0 +1,53 @@
+# --- 1. DB Subnet Group ---
+# This tells AWS which private subnets the database should live in
+resource "aws_db_subnet_group" "alpha_db_subnet" {
+  name       = "${locals.project}-db-subnet-group"
+  subnet_ids = [for s in aws_subnet.private : s.id]
+
+  tags = merge(locals.common_tags, { Name = "${locals.project}-db-subnet-group" })
+}
+
+# --- 2. Security Group for RDS ---
+# This is the "Lock" - it only allows the Web Servers to enter
+resource "aws_security_group" "db_sg" {
+  name        = "${locals.project}-db-sg"
+  description = "Allow access only from the web application tier"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    from_port       = 3306 # Default for MySQL (use 5432 for Postgres)
+    to_port         = 3306
+    protocol        = "tcp"
+    security_groups = [aws_security_group.web_sg.id] # The "Key"
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = merge(locals.common_tags, { Name = "${locals.project}-db-sg" })
+}
+
+# --- 3. RDS Instance ---
+resource "aws_db_instance" "alpha_db" {
+  allocated_storage    = 20
+  db_name              = "alphadb"
+  engine               = "mysql"
+  engine_version       = "8.0"
+  instance_class       = "db.t3.micro" # Free tier eligible
+  username             = "admin"
+  password             = "Password123!" # In production, use Secrets Manager!
+  parameter_group_name = "default.mysql8.0"
+  
+  db_subnet_group_name   = aws_db_subnet_group.alpha_db_subnet.name
+  vpc_security_group_ids = [aws_security_group.db_sg.id]
+  
+  # Requirement: Disable public access
+  publicly_accessible = false
+  skip_final_snapshot = true
+
+  tags = merge(locals.common_tags, { Name = "${locals.project}-rds-instance" })
+}
