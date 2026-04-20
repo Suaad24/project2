@@ -1,0 +1,53 @@
+# --- 1. IAM Role for EC2 ---
+resource "aws_iam_role" "web_role" {
+  name = "${locals.project}-web-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+      },
+    ]
+  })
+}
+
+# --- 2. IAM Policy for Parameter Store (Least Privilege) ---
+resource "aws_iam_policy" "ssm_policy" {
+  name        = "${locals.project}-ssm-read"
+  description = "Allows EC2 to read DB credentials from Parameter Store"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = [
+          "ssm:GetParameter",
+          "ssm:GetParameters"
+        ]
+        Resource = "arn:aws:ssm:*:*:parameter/alpha/prod/*" # Restricted to your project path
+      }
+    ]
+  })
+}
+
+# --- 3. Attach Policy to Role ---
+resource "aws_iam_role_policy_attachment" "web_attach" {
+  role       = aws_iam_role.web_role.name
+  policy_arn = aws_iam_policy.ssm_policy.arn
+}
+
+# --- 4. Create Instance Profile ---
+resource "aws_iam_instance_profile" "web_profile" {
+  name = "${locals.project}-web-profile"
+  role = aws_iam_role.web_role.name
+}
+
+# --- 5. Update your aws_instance block ---
+# Add this line inside your resource "aws_instance" "web" block:
+# iam_instance_profile = aws_iam_instance_profile.web_profile.name
