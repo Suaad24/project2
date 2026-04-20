@@ -1,0 +1,71 @@
+# --- 1. Security Group for the Load Balancer ---
+resource "aws_security_group" "alb_sg" {
+  name        = "alpha-alb-sg"
+  description = "Allow HTTP from internet"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = merge(locals.common_tags, { Name = "alpha-alb-sg" })
+}
+
+# --- 2. Security Group for Web Servers ---
+resource "aws_security_group" "web_sg" {
+  name        = "alpha-web-sg"
+  description = "Allow HTTP only from ALB"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    from_port       = 80
+    to_port         = 80
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb_sg.id] # Only allows traffic if it comes from the ALB
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = merge(locals.common_tags, { Name = "alpha-web-sg" })
+}
+
+# --- 3. Launching 2 EC2 Instances ---
+resource "aws_instance" "web" {
+  count                  = 2
+  ami                    = "ami-0440d3b780d96b29d" # Amazon Linux 2023 in us-east-1
+  instance_type          = "t2.micro"
+  
+  # Placing them in your private subnets
+  subnet_id              = aws_subnet.private[count.index].id
+  vpc_security_group_ids = [aws_security_group.web_sg.id]
+  
+  # IMPORTANT: In a lab without a NAT Gateway, these need public IPs 
+  # just to download Apache. We then block direct access via the Security Group.
+  associate_public_ip_address = true 
+
+  user_data = <<-EOF
+              #!/bin/bash
+              yum update -y
+              yum install -y httpd
+              systemctl start httpd
+              systemctl enable httpd
+              echo "<h1>Alpha Enterprise - Server ${count.index + 1}</h1>" > /var/www/html/index.html
+              EOF
+
+  tags = merge(locals.common_tags, { Name = "alpha-web-0${count.index + 1}" })
+}
